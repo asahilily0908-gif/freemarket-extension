@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { ProductData } from "../utils/api";
 import { fetchProductData, fillForm, generateDescription } from "../utils/api";
 
@@ -251,9 +251,9 @@ function SettingsTab() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  useState(() => {
+  useEffect(() => {
     loadKey();
-  });
+  }, []);
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">

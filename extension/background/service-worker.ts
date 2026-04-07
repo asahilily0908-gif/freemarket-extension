@@ -44,9 +44,12 @@ async function handleFillForm(payload: {
   platform: "rakuma" | "yahooflea";
   data: Record<string, unknown>;
 }): Promise<unknown> {
-  const urlPatterns: Record<string, string> = {
-    rakuma: "https://fril.jp/*",
-    yahooflea: "https://paypayfleamarket.yahoo.co.jp/*",
+  const urlPatterns: Record<string, string[]> = {
+    rakuma: ["https://fril.jp/*"],
+    yahooflea: [
+      "https://paypayfleamarket.yahoo.co.jp/*",
+      "https://paypayfleamarket-sec.yahoo.co.jp/*",
+    ],
   };
 
   const contentScripts: Record<string, string> = {
@@ -74,10 +77,15 @@ async function handleFillForm(payload: {
   const images = (payload.data.images as string[]) || [];
   const imageFiles = await fetchImagesAsBase64(images.slice(0, 10));
 
+  // conditionを正規化（メルカリの「ラベル+説明文」から既知のラベルだけ抽出）
+  const condition = normalizeCondition(
+    (payload.data.condition as string) || ""
+  );
+
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: "FILL_FORM",
-      data: { ...payload.data, imageFiles },
+      data: { ...payload.data, condition, imageFiles },
     });
     return { success: true, data: response };
   } catch (error) {
@@ -166,6 +174,23 @@ async function getApiBase(): Promise<string> {
 async function getLicenseKey(): Promise<string> {
   const { licenseKey } = await chrome.storage.local.get("licenseKey");
   return licenseKey || "";
+}
+
+const KNOWN_CONDITIONS = [
+  "新品、未使用",
+  "未使用に近い",
+  "目立った傷や汚れなし",
+  "やや傷や汚れあり",
+  "傷や汚れあり",
+  "全体的に状態が悪い",
+];
+
+function normalizeCondition(raw: string): string {
+  if (!raw) return "";
+  for (const label of KNOWN_CONDITIONS) {
+    if (raw.includes(label)) return label;
+  }
+  return raw;
 }
 
 interface ImageFile {

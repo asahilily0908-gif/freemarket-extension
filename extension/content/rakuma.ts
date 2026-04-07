@@ -117,65 +117,64 @@ function mapCondition(mercariCondition: string): string | null {
   return null;
 }
 
+function setSelectValue(select: HTMLSelectElement, targetText: string): boolean {
+  for (const option of select.options) {
+    if (option.text.includes(targetText) || option.value.includes(targetText)) {
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype, "value"
+      )?.set;
+      if (nativeSetter) {
+        nativeSetter.call(select, option.value);
+      } else {
+        select.value = option.value;
+      }
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      console.log(`[フリマアシスト] 状態: "${targetText}" を選択 (value=${option.value})`);
+      return true;
+    }
+  }
+  return false;
+}
+
 function selectCondition(mercariCondition: string): boolean {
   const targetText = mapCondition(mercariCondition);
   if (!targetText) return false;
 
-  // 方式1: labelテキスト「商品の状態」から紐づくselect要素を取得
+  // labelテキスト「商品の状態」から紐づく要素を取得
   const el = findElementByLabel("商品の状態");
-  if (el && el.tagName === "SELECT") {
-    const select = el as HTMLSelectElement;
-    for (const option of select.options) {
-      if (option.text.includes(targetText) || option.value.includes(targetText)) {
-        const nativeSetter = Object.getOwnPropertyDescriptor(
-          window.HTMLSelectElement.prototype, "value"
-        )?.set;
-        if (nativeSetter) {
-          nativeSetter.call(select, option.value);
-        } else {
-          select.value = option.value;
-        }
-        select.dispatchEvent(new Event("input", { bubbles: true }));
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-        console.log(`[フリマアシスト] 状態: "${targetText}" を選択 (value=${option.value})`);
-        return true;
-      }
-    }
-  }
+  console.log(`[フリマアシスト] 状態: findElementByLabel("商品の状態") → tagName=${el?.tagName}, className=${el?.className?.slice(0, 60)}, role=${el?.getAttribute("role")}`);
 
-  // 方式2: Chakra UIのカスタムセレクト（labelの近傍を探す）
   if (el) {
-    // Chakra UIのselectはnative selectの場合もある
-    let parent: Element | null = el.closest(".chakra-form-control") || el.parentElement;
-    for (let i = 0; i < 5 && parent; i++) {
+    // ケース1: 要素自体が<select>
+    if (el.tagName === "SELECT") {
+      if (setSelectValue(el as HTMLSelectElement, targetText)) return true;
+    }
+
+    // ケース2: Chakra UIの chakra-native-select（要素の親や近傍にselectがある）
+    // label for → input/div の場合、近傍のselectを探す
+    let parent: Element | null = el.closest("[class*='chakra']") || el.parentElement;
+    for (let i = 0; i < 8 && parent; i++) {
       const select = parent.querySelector("select") as HTMLSelectElement | null;
-      if (select && select !== el) {
-        for (const option of select.options) {
-          if (option.text.includes(targetText)) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(
-              window.HTMLSelectElement.prototype, "value"
-            )?.set;
-            if (nativeSetter) {
-              nativeSetter.call(select, option.value);
-            } else {
-              select.value = option.value;
-            }
-            select.dispatchEvent(new Event("input", { bubbles: true }));
-            select.dispatchEvent(new Event("change", { bubbles: true }));
-            console.log(`[フリマアシスト] 状態: Chakra近傍selectで "${targetText}" を選択`);
-            return true;
-          }
-        }
+      if (select) {
+        console.log(`[フリマアシスト] 状態: 近傍select発見 (name=${select.name}, class=${select.className?.slice(0, 60)})`);
+        if (setSelectValue(select, targetText)) return true;
       }
-      // Chakra UIのカスタムボタン型セレクト
+      parent = parent.parentElement;
+    }
+
+    // ケース3: Chakra UIのカスタムボタン型セレクト（Menu/Popover方式）
+    parent = el.closest("[class*='chakra']") || el.parentElement;
+    for (let i = 0; i < 8 && parent; i++) {
       const clickable = parent.querySelector(
-        'button, [role="button"], [role="listbox"], [role="combobox"]'
+        'button, [role="button"], [role="listbox"], [role="combobox"], [class*="chakra-select"], [class*="chakra-menu"]'
       ) as HTMLElement | null;
       if (clickable) {
+        console.log(`[フリマアシスト] 状態: カスタムUI発見 (tag=${clickable.tagName}, class=${clickable.className?.slice(0, 60)})`);
         clickable.click();
         setTimeout(() => {
           const options = document.querySelectorAll(
-            '[role="option"], [role="menuitem"], [class*="option"]'
+            '[role="option"], [role="menuitem"], [class*="option"], [class*="menu-item"], li'
           );
           for (const opt of options) {
             if (opt.textContent?.trim().includes(targetText)) {
@@ -184,6 +183,7 @@ function selectCondition(mercariCondition: string): boolean {
               return;
             }
           }
+          console.warn(`[フリマアシスト] 状態: カスタムUI選択肢に "${targetText}" が見つかりません`);
         }, 500);
         return true;
       }
@@ -191,24 +191,12 @@ function selectCondition(mercariCondition: string): boolean {
     }
   }
 
-  // 方式3: ページ全体のselectを走査
+  // フォールバック: ページ全体のselectを走査
   const selects = document.querySelectorAll("select");
   for (const select of selects) {
-    for (const option of select.options) {
-      if (option.text.includes(targetText)) {
-        const nativeSetter = Object.getOwnPropertyDescriptor(
-          window.HTMLSelectElement.prototype, "value"
-        )?.set;
-        if (nativeSetter) {
-          nativeSetter.call(select, option.value);
-        } else {
-          select.value = option.value;
-        }
-        select.dispatchEvent(new Event("input", { bubbles: true }));
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-        console.log(`[フリマアシスト] 状態: 全select走査で "${targetText}" を選択`);
-        return true;
-      }
+    if (setSelectValue(select, targetText)) {
+      console.log(`[フリマアシスト] 状態: 全select走査で発見`);
+      return true;
     }
   }
 
