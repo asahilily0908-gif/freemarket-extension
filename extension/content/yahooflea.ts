@@ -239,10 +239,13 @@ function uploadImages(imageFiles: ImageFile[]): void {
 
   console.log("[フリマアシスト] 画像: 「画像を追加する」ボタン発見");
 
-  // input[type=file] の出現を監視
+  // input[type=file] の出現を監視（どの段階で出ても検知する）
+  let fileInputSet = false;
   const fileInputObserver = new MutationObserver(() => {
+    if (fileInputSet) return;
     const input = document.querySelector<HTMLInputElement>('input[type="file"]');
     if (input) {
+      fileInputSet = true;
       fileInputObserver.disconnect();
       console.log("[フリマアシスト] 画像: input[type=file]出現！ファイルセット");
       const dt = new DataTransfer();
@@ -250,30 +253,51 @@ function uploadImages(imageFiles: ImageFile[]): void {
       input.files = dt.files;
       input.dispatchEvent(new Event("change", { bubbles: true }));
       input.dispatchEvent(new Event("input", { bubbles: true }));
-      console.log(`[フリマアシスト] 画像: ${files.length}枚セット完了`);
     }
   });
   fileInputObserver.observe(document.body, { childList: true, subtree: true });
 
-  // ボタンクリック → モーダルが開く
-  reactClick(addImageBtn);
-
-  // モーダル内の「アルバムから選択する」を探してクリック
-  const albumObserver = new MutationObserver(() => {
-    const albumBtn = findButtonByText("アルバムから選択する");
-    if (albumBtn) {
-      albumObserver.disconnect();
-      console.log("[フリマアシスト] 画像: 「アルバムから選択する」発見、クリック");
-      setTimeout(() => reactClick(albumBtn), 300);
-    }
-  });
-  albumObserver.observe(document.body, { childList: true, subtree: true });
-
-  // タイムアウト
+  // 「画像を追加する」をクリック（fillFormから十分な遅延後に呼ばれる前提）
   setTimeout(() => {
-    fileInputObserver.disconnect();
-    albumObserver.disconnect();
-  }, 10000);
+    reactClick(addImageBtn);
+    console.log("[フリマアシスト] 画像: 「画像を追加する」をクリック");
+
+    // 「アルバムから選択する」の出現を監視 + ポーリング
+    const albumObserver = new MutationObserver(() => {
+      const albumBtn = findButtonByText("アルバムから選択する");
+      if (albumBtn) {
+        albumObserver.disconnect();
+        console.log("[フリマアシスト] 画像: 「アルバムから選択する」発見（Observer）");
+        setTimeout(() => reactClick(albumBtn), 300);
+      }
+    });
+    albumObserver.observe(document.body, { childList: true, subtree: true });
+
+    // ポーリングでも探す（MutationObserverが漏れる場合の保険）
+    let pollCount = 0;
+    const poll = setInterval(() => {
+      pollCount++;
+      if (fileInputSet || pollCount > 20) {
+        clearInterval(poll);
+        albumObserver.disconnect();
+        return;
+      }
+      const albumBtn = findButtonByText("アルバムから選択する");
+      if (albumBtn) {
+        clearInterval(poll);
+        albumObserver.disconnect();
+        console.log("[フリマアシスト] 画像: 「アルバムから選択する」発見（Polling）");
+        reactClick(albumBtn);
+      }
+    }, 500);
+
+    // タイムアウト
+    setTimeout(() => {
+      fileInputObserver.disconnect();
+      albumObserver.disconnect();
+      clearInterval(poll);
+    }, 15000);
+  }, 500);
 }
 
 function tryDropOnPage(files: File[]) {
@@ -481,34 +505,46 @@ function fillForm(data: {
 }) {
   console.log("[フリマアシスト] Yahoo!フリマ転記開始");
 
+  // テキストフィールドは即座に入力
   const results: Record<string, boolean> = {
     title: fillTitle(data.title),
     description: fillDescription(data.description),
     price: fillPrice(data.price),
   };
 
+  // モーダル/プルダウン系は順番に実行（前の操作が完了するのを待つ）
+  let delay = 500;
+
   if (data.condition) {
-    selectCondition(data.condition);
+    setTimeout(() => selectCondition(data.condition!), delay);
     results.condition = true;
+    delay += 4000; // 状態モーダルが開いて閉じるまで待つ
   }
 
   if (data.defaultShipping) {
-    selectShipping(data.defaultShipping);
+    setTimeout(() => selectShipping(data.defaultShipping!), delay);
     results.shipping = true;
+    delay += 2000;
   }
 
   if (data.shippingDays) {
-    selectShippingDays(data.shippingDays);
+    setTimeout(() => selectShippingDays(data.shippingDays!), delay);
     results.shippingDays = true;
+    delay += 500;
   }
 
   if (data.prefecture) {
-    selectPrefecture(data.prefecture);
+    setTimeout(() => selectPrefecture(data.prefecture!), delay);
     results.prefecture = true;
+    delay += 500;
   }
 
+  // 画像は全操作が完了した後に最後に実行
   if (data.imageFiles && data.imageFiles.length > 0) {
-    uploadImages(data.imageFiles);
+    setTimeout(() => {
+      console.log("[フリマアシスト] 画像: 他の操作完了を待ってから開始");
+      uploadImages(data.imageFiles!);
+    }, delay + 1000);
     results.images = true;
   }
 

@@ -48,11 +48,12 @@ async function handleFillForm(payload: {
   platform: "rakuma" | "yahooflea";
   data: Record<string, unknown>;
 }): Promise<unknown> {
+  // 出品フォームのURLのみマッチ（トップページ等は除外）
   const urlPatterns: Record<string, string[]> = {
-    rakuma: ["https://fril.jp/*"],
+    rakuma: ["https://fril.jp/item/*"],
     yahooflea: [
-      "https://paypayfleamarket.yahoo.co.jp/*",
-      "https://paypayfleamarket-sec.yahoo.co.jp/*",
+      "https://paypayfleamarket.yahoo.co.jp/item/add*",
+      "https://paypayfleamarket-sec.yahoo.co.jp/item/add*",
     ],
   };
 
@@ -61,15 +62,47 @@ async function handleFillForm(payload: {
     yahooflea: "yahooflea.js",
   };
 
-  const tabs = await chrome.tabs.query({
+  const listingUrls: Record<string, string> = {
+    rakuma: "https://fril.jp/item/new",
+    yahooflea: "https://paypayfleamarket-sec.yahoo.co.jp/item/add?from=sellTop",
+  };
+
+  let tabs = await chrome.tabs.query({
     url: urlPatterns[payload.platform],
   });
 
+  // 出品ページが開いていなければ自動で開く
   if (tabs.length === 0 || !tabs[0].id) {
-    return {
-      success: false,
-      error: `${payload.platform}のタブが見つかりません。出品フォームを開いてください。`,
-    };
+    const platformName = payload.platform === "rakuma" ? "ラクマ" : "Yahoo!フリマ";
+    console.log(`[フリマアシスト] ${platformName}の出品ページを自動で開きます`);
+    const newTab = await chrome.tabs.create({ url: listingUrls[payload.platform] });
+
+    // ページの読み込みを待つ
+    await new Promise<void>((resolve) => {
+      const listener = (tabId: number, info: chrome.tabs.TabChangeInfo) => {
+        if (tabId === newTab.id && info.status === "complete") {
+          chrome.tabs.onUpdated.removeListener(listener);
+          resolve();
+        }
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      // タイムアウト
+      setTimeout(() => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }, 15000);
+    });
+
+    // 少し待ってからタブを再検索
+    await new Promise((r) => setTimeout(r, 2000));
+    tabs = await chrome.tabs.query({ url: urlPatterns[payload.platform] });
+
+    if (tabs.length === 0 || !tabs[0].id) {
+      return {
+        success: false,
+        error: `${platformName}の出品ページを開けませんでした。手動で出品ページを開いてください。`,
+      };
+    }
   }
 
   const tabId = tabs[0].id;

@@ -54,6 +54,10 @@ export async function fetchProductData(): Promise<ProductData> {
     throw new Error("メルカリの商品ページを開いてください");
   }
 
+  if (!tab.url.includes("/item/")) {
+    throw new Error("メルカリの商品ページ（商品詳細）を開いてください。トップページや検索結果からは取得できません。");
+  }
+
   await ensureContentScript(tab.id);
 
   return new Promise((resolve, reject) => {
