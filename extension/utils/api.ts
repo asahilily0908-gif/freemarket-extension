@@ -75,11 +75,59 @@ export async function fetchProductData(): Promise<ProductData> {
   });
 }
 
+export interface FillResult {
+  title: boolean;
+  description: boolean;
+  price: boolean;
+  condition?: boolean;
+  shipping?: boolean;
+  shippingDays?: boolean;
+  prefecture?: boolean;
+  images?: boolean;
+}
+
 export function fillForm(
   platform: "rakuma" | "yahooflea",
   data: ProductData
-): Promise<void> {
-  return sendMessage("FILL_FORM", { platform, data });
+): Promise<FillResult> {
+  return sendMessage<FillResult>("FILL_FORM", { platform, data });
+}
+
+export interface TransferRecord {
+  id: string;
+  date: string;
+  title: string;
+  price: string;
+  platform: "rakuma" | "yahooflea";
+  result: FillResult;
+}
+
+export async function saveTransferRecord(record: TransferRecord): Promise<void> {
+  const { transferHistory = [] } = await chrome.storage.local.get("transferHistory");
+  transferHistory.unshift(record);
+  // 最大100件保持
+  if (transferHistory.length > 100) transferHistory.length = 100;
+  await chrome.storage.local.set({ transferHistory });
+}
+
+export async function getTransferHistory(): Promise<TransferRecord[]> {
+  const { transferHistory = [] } = await chrome.storage.local.get("transferHistory");
+  return transferHistory;
+}
+
+export interface DescriptionTemplate {
+  id: string;
+  name: string;
+  text: string;
+}
+
+export async function getTemplates(): Promise<DescriptionTemplate[]> {
+  const { descTemplates = [] } = await chrome.storage.local.get("descTemplates");
+  return descTemplates;
+}
+
+export async function saveTemplates(templates: DescriptionTemplate[]): Promise<void> {
+  await chrome.storage.local.set({ descTemplates: templates });
 }
 
 export function generateDescription(payload: {

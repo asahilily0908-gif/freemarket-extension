@@ -17,6 +17,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "GET_SELECTORS":
       handleGetSelectors().then(sendResponse);
       return true;
+
+    case "FILL_FORM_FROM_PAGE":
+      handleFillForm(message.payload).then(sendResponse);
+      return true;
   }
 });
 
