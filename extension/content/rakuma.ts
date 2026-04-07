@@ -262,17 +262,161 @@ function uploadImages(imageFiles: ImageFile[]): boolean {
   return false;
 }
 
+/**
+ * 配送方法を選択する（Chakra UIのselect or カスタムUI）
+ */
+function selectShipping(shippingText: string): boolean {
+  if (!shippingText) return false;
+
+  // ラクマはChakra UIなのでlabelベース + 近傍select
+  const el = findElementByLabel("配送料の負担") || findElementByLabel("配送方法");
+  if (el && el.tagName === "SELECT") {
+    const select = el as HTMLSelectElement;
+    for (const option of select.options) {
+      if (option.text.includes(shippingText)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        console.log(`[フリマアシスト] 配送: "${shippingText}" を選択`);
+        return true;
+      }
+    }
+  }
+
+  // ページ全体のselectを走査
+  const selects = document.querySelectorAll("select");
+  for (const select of selects) {
+    for (const option of select.options) {
+      if (option.text.includes(shippingText)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        console.log(`[フリマアシスト] 配送: 全select走査で "${shippingText}" を選択`);
+        return true;
+      }
+    }
+  }
+
+  console.warn(`[フリマアシスト] 配送: "${shippingText}" が見つかりません`);
+  return false;
+}
+
+/**
+ * 発送日数を選択する
+ */
+function selectShippingDays(daysText: string): boolean {
+  if (!daysText) return false;
+
+  const el = findElementByLabel("発送までの日数") || findElementByLabel("発送日の目安");
+  if (el && el.tagName === "SELECT") {
+    const select = el as HTMLSelectElement;
+    for (const option of select.options) {
+      if (option.text.includes(daysText)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        console.log(`[フリマアシスト] 発送日数: "${daysText}" を選択`);
+        return true;
+      }
+    }
+  }
+
+  // ページ全体のselect走査
+  const selects = document.querySelectorAll("select");
+  for (const select of selects) {
+    for (const option of select.options) {
+      if (option.text.includes(daysText)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        console.log(`[フリマアシスト] 発送日数: 全select走査で "${daysText}" を選択`);
+        return true;
+      }
+    }
+  }
+
+  console.warn(`[フリマアシスト] 発送日数: "${daysText}" が見つかりません`);
+  return false;
+}
+
+/**
+ * 発送元の地域を選択する
+ */
+function selectPrefecture(prefText: string): boolean {
+  if (!prefText) return false;
+
+  // labelベース
+  const el = findElementByLabel("発送元") || findElementByLabel("地域");
+  if (el && el.tagName === "SELECT") {
+    const select = el as HTMLSelectElement;
+    for (const option of select.options) {
+      if (option.text.includes(prefText)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        console.log(`[フリマアシスト] 地域: "${prefText}" を選択`);
+        return true;
+      }
+    }
+  }
+
+  // 全select走査
+  const selects = document.querySelectorAll("select");
+  for (const select of selects) {
+    for (const option of select.options) {
+      if (option.text === prefText || option.text.includes(prefText)) {
+        const nativeSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLSelectElement.prototype, "value"
+        )?.set;
+        if (nativeSetter) nativeSetter.call(select, option.value);
+        else select.value = option.value;
+        select.dispatchEvent(new Event("input", { bubbles: true }));
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        console.log(`[フリマアシスト] 地域: 全select走査で "${prefText}" を選択`);
+        return true;
+      }
+    }
+  }
+
+  console.warn(`[フリマアシスト] 地域: "${prefText}" が見つかりません`);
+  return false;
+}
+
 function fillForm(data: {
   title: string;
   description: string;
   price: string;
   condition?: string;
+  defaultShipping?: string;
+  shippingDays?: string;
+  prefecture?: string;
   imageFiles?: ImageFile[];
 }) {
   console.log("[フリマアシスト] ラクマ転記開始:", {
     title: data.title?.slice(0, 20),
     price: data.price,
     condition: data.condition,
+    shipping: data.defaultShipping,
     imageCount: data.imageFiles?.length || 0,
   });
 
@@ -284,6 +428,18 @@ function fillForm(data: {
 
   if (data.condition) {
     results.condition = selectCondition(data.condition);
+  }
+
+  if (data.defaultShipping) {
+    results.shipping = selectShipping(data.defaultShipping);
+  }
+
+  if (data.shippingDays) {
+    results.shippingDays = selectShippingDays(data.shippingDays);
+  }
+
+  if (data.prefecture) {
+    results.prefecture = selectPrefecture(data.prefecture);
   }
 
   if (data.imageFiles && data.imageFiles.length > 0) {

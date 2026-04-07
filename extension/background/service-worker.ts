@@ -82,10 +82,21 @@ async function handleFillForm(payload: {
     (payload.data.condition as string) || ""
   );
 
+  // デフォルト配送方法・発送日数を取得
+  const shippingKey = payload.platform === "rakuma" ? "rakumaShipping" : "yahooShipping";
+  const settings = await chrome.storage.local.get([shippingKey, "shippingDays", "prefecture"]);
+
   try {
     const response = await chrome.tabs.sendMessage(tabId, {
       type: "FILL_FORM",
-      data: { ...payload.data, condition, imageFiles },
+      data: {
+        ...payload.data,
+        condition,
+        imageFiles,
+        defaultShipping: settings[shippingKey] || "",
+        shippingDays: settings.shippingDays || "",
+        prefecture: settings.prefecture || "",
+      },
     });
     return { success: true, data: response };
   } catch (error) {

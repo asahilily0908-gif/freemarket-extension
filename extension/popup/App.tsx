@@ -43,7 +43,11 @@ export default function App() {
     try {
       await fillForm(platform, dataToFill);
       setFillStatus("success");
-      alert("転記が完了しました。内容を確認して出品ボタンを押してください。");
+      if (platform === "yahooflea") {
+        alert("転記が完了しました。画像のアップロードが反映されていない場合は手動でアップロードしてください。内容を確認して出品ボタンを押してください。");
+      } else {
+        alert("転記が完了しました。内容を確認して出品ボタンを押してください。");
+      }
     } catch (err) {
       setFillStatus("error");
       setErrorMessage(
@@ -236,24 +240,80 @@ export default function App() {
   );
 }
 
+const RAKUMA_SHIPPING_OPTIONS = [
+  { value: "", label: "選択しない（手動）" },
+  { value: "かんたんラクマパック（日本郵便）", label: "かんたんラクマパック（日本郵便）" },
+  { value: "かんたんラクマパック（ヤマト運輸）", label: "かんたんラクマパック（ヤマト運輸）" },
+  { value: "未定", label: "未定" },
+  { value: "送料込み（出品者負担）", label: "送料込み（出品者負担）" },
+  { value: "着払い（購入者負担）", label: "着払い（購入者負担）" },
+];
+
+const YAHOO_SHIPPING_OPTIONS = [
+  { value: "", label: "選択しない（手動）" },
+  { value: "おてがる配送（ヤマト運輸）", label: "おてがる配送（ヤマト運輸）" },
+  { value: "おてがる配送（日本郵便）", label: "おてがる配送（日本郵便）" },
+];
+
+const SHIPPING_DAYS_OPTIONS = [
+  { value: "", label: "選択しない（手動）" },
+  { value: "1~2日", label: "1~2日で発送" },
+  { value: "2~3日", label: "2~3日で発送" },
+  { value: "3~7日", label: "3~7日で発送" },
+];
+
+const PREFECTURES = [
+  "", "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+  "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+  "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
+  "岐阜県", "静岡県", "愛知県", "三重県",
+  "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
+  "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+  "徳島県", "香川県", "愛媛県", "高知県",
+  "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
+];
+
 function SettingsTab() {
   const [licenseKey, setLicenseKey] = useState("");
+  const [rakumaShipping, setRakumaShipping] = useState("");
+  const [yahooShipping, setYahooShipping] = useState("");
+  const [shippingDays, setShippingDays] = useState("");
+  const [prefecture, setPrefecture] = useState("");
   const [saved, setSaved] = useState(false);
 
-  const loadKey = async () => {
-    const { licenseKey: key } = await chrome.storage.local.get("licenseKey");
-    if (key) setLicenseKey(key);
+  const loadSettings = async () => {
+    const data = await chrome.storage.local.get([
+      "licenseKey",
+      "rakumaShipping",
+      "yahooShipping",
+      "shippingDays",
+      "prefecture",
+    ]);
+    if (data.licenseKey) setLicenseKey(data.licenseKey);
+    if (data.rakumaShipping) setRakumaShipping(data.rakumaShipping);
+    if (data.yahooShipping) setYahooShipping(data.yahooShipping);
+    if (data.shippingDays) setShippingDays(data.shippingDays);
+    if (data.prefecture) setPrefecture(data.prefecture);
   };
 
-  const saveKey = async () => {
-    await chrome.storage.local.set({ licenseKey });
+  const saveSettings = async () => {
+    await chrome.storage.local.set({
+      licenseKey,
+      rakumaShipping,
+      yahooShipping,
+      shippingDays,
+      prefecture,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
 
   useEffect(() => {
-    loadKey();
+    loadSettings();
   }, []);
+
+  const selectClass =
+    "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400 outline-none bg-white";
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -264,15 +324,85 @@ function SettingsTab() {
           value={licenseKey}
           onChange={(e) => setLicenseKey(e.target.value)}
           placeholder="ライセンスキーを入力"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-300 focus:border-blue-400 outline-none"
+          className={selectClass}
         />
-        <button
-          onClick={saveKey}
-          className="mt-2 w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition-colors text-sm"
-        >
-          {saved ? "保存しました" : "保存"}
-        </button>
       </section>
+
+      <section className="bg-white rounded-lg shadow-sm p-4">
+        <h2 className="text-sm font-semibold mb-3">デフォルト配送方法</h2>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-600 font-medium">ラクマ</label>
+            <select
+              value={rakumaShipping}
+              onChange={(e) => setRakumaShipping(e.target.value)}
+              className={selectClass + " mt-1"}
+            >
+              {RAKUMA_SHIPPING_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">
+              Yahoo!フリマ
+            </label>
+            <select
+              value={yahooShipping}
+              onChange={(e) => setYahooShipping(e.target.value)}
+              className={selectClass + " mt-1"}
+            >
+              {YAHOO_SHIPPING_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">
+              発送までの日数（共通）
+            </label>
+            <select
+              value={shippingDays}
+              onChange={(e) => setShippingDays(e.target.value)}
+              className={selectClass + " mt-1"}
+            >
+              {SHIPPING_DAYS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 font-medium">
+              発送元の地域（共通）
+            </label>
+            <select
+              value={prefecture}
+              onChange={(e) => setPrefecture(e.target.value)}
+              className={selectClass + " mt-1"}
+            >
+              <option value="">選択しない（手動）</option>
+              {PREFECTURES.filter(Boolean).map((pref) => (
+                <option key={pref} value={pref}>
+                  {pref}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <button
+        onClick={saveSettings}
+        className="w-full bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 rounded-lg transition-colors text-sm"
+      >
+        {saved ? "保存しました！" : "設定を保存"}
+      </button>
 
       <section className="bg-white rounded-lg shadow-sm p-4">
         <h2 className="text-sm font-semibold mb-2">プランについて</h2>
