@@ -129,19 +129,6 @@ function scrapeProductData() {
   };
 }
 
-// 出品一覧ページから商品URLリストを取得
-function getListingUrls(): string[] {
-  const urls: string[] = [];
-  const links = document.querySelectorAll('a[href*="/item/"]');
-  for (const link of links) {
-    const href = (link as HTMLAnchorElement).href;
-    if (href && href.includes("/item/m") && !urls.includes(href)) {
-      urls.push(href);
-    }
-  }
-  return urls;
-}
-
 // Service Workerからのメッセージを受信
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "PING") {
@@ -151,9 +138,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SCRAPE_MERCARI") {
     const data = scrapeProductData();
     sendResponse(data);
-  }
-  if (message.type === "GET_LISTING_URLS") {
-    sendResponse(getListingUrls());
   }
 });
 
