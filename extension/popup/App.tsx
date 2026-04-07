@@ -3,7 +3,7 @@ import type { ProductData, FillResult, TransferRecord, DescriptionTemplate } fro
 import {
   fetchProductData, fillForm, generateDescription,
   saveTransferRecord, getTransferHistory,
-  getTemplates, saveTemplates,
+  getTemplates, saveTemplates, getListingUrls,
 } from "../utils/api";
 
 type Status = "idle" | "loading" | "success" | "error";
@@ -203,6 +203,9 @@ export default function App() {
             </p>
           </section>
 
+          {/* 一括転記 */}
+          <BatchTransfer />
+
           {errorMessage && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-lg">
               {errorMessage}
@@ -321,6 +324,117 @@ function TemplateButton({ onInsert, currentText }: { onInsert: (text: string) =>
   );
 }
 
+// --- 一括転記 ---
+function BatchTransfer() {
+  const [urls, setUrls] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0, title: "" });
+
+  const handleLoadUrls = async () => {
+    setLoading(true);
+    try {
+      const found = await getListingUrls();
+      setUrls(found);
+    } catch {
+      setUrls([]);
+    }
+    setLoading(false);
+  };
+
+  const handleBatch = async (platform: "rakuma" | "yahooflea") => {
+    if (urls.length === 0) return;
+    setBatchRunning(true);
+    const platformLabel = platform === "rakuma" ? "ラクマ" : "Yahoo!フリマ";
+
+    for (let i = 0; i < urls.length; i++) {
+      setProgress({ current: i + 1, total: urls.length, title: "処理中..." });
+
+      try {
+        // 商品ページに移動
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          await chrome.tabs.update(tab.id, { url: urls[i] });
+          // ページ読み込みを待つ
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+
+        // 商品情報取得
+        const data = await fetchProductData();
+        setProgress({ current: i + 1, total: urls.length, title: data.title.slice(0, 15) + "..." });
+
+        // 転記
+        const result = await fillForm(platform, data);
+
+        // 履歴保存
+        await saveTransferRecord({
+          id: Date.now().toString(),
+          date: new Date().toLocaleString("ja-JP"),
+          title: data.title,
+          price: data.price,
+          platform,
+          result,
+        });
+
+        // 次の処理まで少し待つ
+        await new Promise((r) => setTimeout(r, 2000));
+      } catch (err) {
+        console.error("[バッチ] " + urls[i] + " 失敗:", err);
+      }
+    }
+
+    setBatchRunning(false);
+    alert(`一括転記完了: ${urls.length}件を${platformLabel}に転記しました。各出品の内容を確認してください。`);
+  };
+
+  return (
+    <section className="bg-white rounded-lg shadow-sm p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-1 rounded">一括</span>
+        <h2 className="text-sm font-semibold">一括転記</h2>
+      </div>
+
+      <button onClick={handleLoadUrls} disabled={loading || batchRunning}
+        className="w-full bg-orange-100 hover:bg-orange-200 text-orange-700 font-medium py-2 rounded-lg transition-colors text-xs mb-2">
+        {loading ? "読み込み中..." : "メルカリ出品一覧から商品を取得"}
+      </button>
+
+      {urls.length > 0 && !batchRunning && (
+        <div>
+          <p className="text-xs text-gray-600 mb-2">{urls.length}件の商品を検出</p>
+          <div className="flex gap-2">
+            <button onClick={() => handleBatch("rakuma")}
+              className="flex-1 bg-pink-500 hover:bg-pink-600 text-white font-medium py-2 rounded-lg text-xs">
+              ラクマに一括転記
+            </button>
+            <button onClick={() => handleBatch("yahooflea")}
+              className="flex-1 bg-red-500 hover:bg-red-600 text-white font-medium py-2 rounded-lg text-xs">
+              Yahoo!に一括転記
+            </button>
+          </div>
+        </div>
+      )}
+
+      {batchRunning && (
+        <div className="mt-2">
+          <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+            <span>{progress.title}</span>
+            <span>{progress.current}/{progress.total}</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="bg-orange-500 h-2 rounded-full transition-all"
+              style={{ width: `${(progress.current / progress.total) * 100}%` }} />
+          </div>
+        </div>
+      )}
+
+      <p className="text-xs text-gray-400 mt-2">
+        メルカリの出品一覧ページで実行してください
+      </p>
+    </section>
+  );
+}
+
 // --- 転記履歴タブ ---
 function HistoryTab() {
   const [history, setHistory] = useState<TransferRecord[]>([]);
@@ -329,30 +443,81 @@ function HistoryTab() {
     getTransferHistory().then(setHistory);
   }, []);
 
-  const platformLabel = { rakuma: "ラクマ", yahooflea: "Yahoo!" } as const;
+  const platformLabel = { rakuma: "ラクマ", yahooflea: "Yahoo!フリマ" } as const;
+
+  const exportCsv = () => {
+    if (history.length === 0) return;
+    const header = "日時,商品名,価格,転記先,タイトル,説明文,価格,状態,配送,日数,地域,画像";
+    const rows = history.map((r) => {
+      const res = r.result || {};
+      const ok = (v?: boolean) => v ? "OK" : "NG";
+      return [
+        r.date,
+        `"${r.title.replace(/"/g, '""')}"`,
+        r.price,
+        platformLabel[r.platform],
+        ok(res.title), ok(res.description), ok(res.price),
+        ok(res.condition), ok(res.shipping), ok(res.shippingDays),
+        ok(res.prefecture), ok(res.images),
+      ].join(",");
+    });
+    const csv = "\uFEFF" + header + "\n" + rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `furima-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearHistory = async () => {
+    if (!confirm("転記履歴をすべて削除しますか？")) return;
+    await chrome.storage.local.set({ transferHistory: [] });
+    setHistory([]);
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-2">
-      <h2 className="text-sm font-semibold mb-2">転記履歴</h2>
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-sm font-semibold">転記履歴</h2>
+        <div className="flex gap-2">
+          {history.length > 0 && (
+            <>
+              <button onClick={exportCsv}
+                className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600">
+                CSV出力
+              </button>
+              <button onClick={clearHistory}
+                className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-gray-300">
+                削除
+              </button>
+            </>
+          )}
+        </div>
+      </div>
       {history.length === 0 ? (
         <p className="text-xs text-gray-400 text-center py-8">まだ転記履歴がありません</p>
       ) : (
-        history.map((record) => (
-          <div key={record.id} className="bg-white rounded-lg shadow-sm p-3 text-xs">
-            <div className="flex items-center justify-between mb-1">
-              <span className="font-semibold text-gray-700 truncate flex-1">{record.title}</span>
-              <span className={`ml-2 px-1.5 py-0.5 rounded text-white text-[10px] ${
-                record.platform === "rakuma" ? "bg-pink-500" : "bg-red-500"
-              }`}>
-                {platformLabel[record.platform]}
-              </span>
+        <>
+          <p className="text-xs text-gray-400">{history.length}件の転記履歴</p>
+          {history.map((record) => (
+            <div key={record.id} className="bg-white rounded-lg shadow-sm p-3 text-xs">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-semibold text-gray-700 truncate flex-1">{record.title}</span>
+                <span className={`ml-2 px-1.5 py-0.5 rounded text-white text-[10px] ${
+                  record.platform === "rakuma" ? "bg-pink-500" : "bg-red-500"
+                }`}>
+                  {platformLabel[record.platform]}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-gray-400">
+                <span>¥{record.price}</span>
+                <span>{record.date}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between text-gray-400">
-              <span>¥{record.price}</span>
-              <span>{record.date}</span>
-            </div>
-          </div>
-        ))
+          ))}
+        </>
       )}
     </div>
   );

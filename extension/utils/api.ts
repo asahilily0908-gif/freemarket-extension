@@ -134,6 +134,24 @@ export async function saveTemplates(templates: DescriptionTemplate[]): Promise<v
   await chrome.storage.local.set({ descTemplates: templates });
 }
 
+export function getListingUrls(): Promise<string[]> {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+      if (!tab?.id || !tab.url?.includes("mercari.com")) {
+        reject(new Error("メルカリのページを開いてください"));
+        return;
+      }
+      chrome.tabs.sendMessage(tab.id, { type: "GET_LISTING_URLS" }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve((response as string[]) || []);
+      });
+    });
+  });
+}
+
 export function generateDescription(payload: {
   title: string;
   description: string;
