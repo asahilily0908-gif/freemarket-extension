@@ -1,0 +1,13 @@
+name = "freemarket-assist"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# ENVIRONMENT は .dev.vars (ローカル) / wrangler secret (本番) で管理
+# ローカル: ENVIRONMENT=development → ライセンス認証スキップ
+# 本番: wrangler secret put ENVIRONMENT → "production"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "local-dev-kv"
+
+# Anthropic APIキーは `wrangler secret put ANTHROPIC_API_KEY` で設定

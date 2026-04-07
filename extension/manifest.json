@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "フリマ出品アシスト AI",
+  "version": "0.1.0",
+  "description": "メルカリの商品情報をワンクリックでラクマ・Yahoo!フリマに転記し、AIが売れやすい説明文を自動生成する出品補助ツール",
+  "permissions": ["activeTab", "storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://jp.mercari.com/*",
+    "https://fril.jp/*",
+    "https://paypayfleamarket.yahoo.co.jp/*"
+  ],
+  "action": {
+    "default_popup": "extension/popup/index.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://jp.mercari.com/*"],
+      "js": ["mercari.js"]
+    },
+    {
+      "matches": ["https://fril.jp/*"],
+      "js": ["rakuma.js"]
+    },
+    {
+      "matches": ["https://paypayfleamarket.yahoo.co.jp/*"],
+      "js": ["yahooflea.js"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
